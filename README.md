@@ -2,4 +2,4 @@
 
 A .NET application written in C# that allows the user to 1) run actions or information gathering commands against a large number of servers, and 2) see the results of those commands in a nice grid-like display.  The application is multi-threaded and thus can execute commands against a large number of servers very quickly.
 
-![Screenshot](Commands-and-Stats/blob/master/example.jpeg)
+![Screenshot](https://raw.github.com/obsoleter/Commands-and-Stats/master/example.jpeg)
