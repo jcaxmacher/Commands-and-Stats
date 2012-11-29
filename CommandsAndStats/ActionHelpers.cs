@@ -139,7 +139,7 @@ namespace CommandsAndStats
             return message;
         }
 
-        public static string sendWMIShutdownReboot(string serverName, string command)
+        public static string runWMIQuery(string serverName, string command)
         {
             string message = "Unknown";
             ConnectionOptions options = new ConnectionOptions();
@@ -174,6 +174,10 @@ namespace CommandsAndStats
                 else if (command == "lastboottime")
                 {
                     message = ParseCIM(os.GetPropertyValue("LastBootUpTime").ToString()).ToString();
+                }
+                else if (command == "winver")
+                {
+                    message = os.GetPropertyValue("Caption").ToString();
                 }
                 else
                 {

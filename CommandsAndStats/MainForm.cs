@@ -42,30 +42,33 @@ namespace CommandsAndStats
                 null, ActionRunner.dateStampResult(), null));
             actionRunner.Add(new Actionable("Ping Scan", null, new Func<string, string>(s => NetworkCommands.pingScan(s)),
                 null, ActionRunner.dateStampResult(), null));
-            //actionRunner.Add(new Actionable("Reboot Server", null, new Func<string, string>(s => NetworkCommands.sendWMIShutdownReboot(s, "reboot")),
-            //    null, ActionRunner.dateStampResult(), null));
-            //actionRunner.Add(new Actionable("Shutdown Server", null, new Func<string, string>(s => NetworkCommands.sendWMIShutdownReboot(s, "shutdown")),
-            //    null, ActionRunner.dateStampResult(), null));
-            //actionRunner.Add(new Actionable("Last BootTime", null, new Func<string, string>(s => NetworkCommands.sendWMIShutdownReboot(s, "lastboottime")),
-            //    null, ActionRunner.dateStampResult(), null));
-            //actionRunner.Add(new Actionable("Power Off VM", null, new Func<string, string>(s => NetworkCommands.powerOffVM(VCenterClient, s)),
-            //    null, ActionRunner.dateStampResult(), null));
-            //actionRunner.Add(new Actionable("Power On VM", null, new Func<string, string>(s => NetworkCommands.powerOnVM(VCenterClient, s)),
-            //    null, ActionRunner.dateStampResult(), null));
-            actionRunner.Add(new Actionable("Get VM Operating System", null, new Func<string, string>(s => NetworkCommands.getVMOperatingSystem(VCenterClient, s)),
+            actionRunner.Add(new Actionable("WMI Operating System", null, new Func<string, string>(s => NetworkCommands.runWMIQuery(s, "winver")),
+                null, null, null));
+            actionRunner.Add(new Actionable("WMI Last BootTime", null, new Func<string, string>(s => NetworkCommands.runWMIQuery(s, "lastboottime")),
+                null, ActionRunner.dateStampResult(), null));
+            actionRunner.Add(new Actionable("WMI Reboot Server!", null, new Func<string, string>(s => NetworkCommands.runWMIQuery(s, "reboot")),
+                null, ActionRunner.dateStampResult(), null));
+            actionRunner.Add(new Actionable("WMI Shutdown Server!", null, new Func<string, string>(s => NetworkCommands.runWMIQuery(s, "shutdown")),
+                null, ActionRunner.dateStampResult(), null));
+            actionRunner.Add(new Actionable("VM Power Off!", null, new Func<string, string>(s => NetworkCommands.powerOffVM(VCenterClient, s)),
+                null, ActionRunner.dateStampResult(), null, 10));
+            actionRunner.Add(new Actionable("VM Power On!", null, new Func<string, string>(s => NetworkCommands.powerOnVM(VCenterClient, s)),
+                null, ActionRunner.dateStampResult(), null, 10));
+            actionRunner.Add(new Actionable("VM Operating System", null, new Func<string, string>(s => NetworkCommands.getVMOperatingSystem(VCenterClient, s)),
                 null, null, null, 10));
             actionRunner.Add(new Actionable("VM Power State", null, new Func<string, string>(s => NetworkCommands.getPowerStatus(VCenterClient, s)),
-                null, ActionRunner.dateStampResult(), null));
+                null, ActionRunner.dateStampResult(), null, 10));
             actionRunner.Add(new Actionable("Nmap OS Scan", null, new Func<string, string>(s => NetworkCommands.nmapOsScan(s)),
                 null, null, null, 10));
-            actionRunner.Add(new Actionable("Windows Install Date", null, new Func<string, string>(s => NetworkCommands.getWindowsInstallDate(s)),
+            actionRunner.Add(new Actionable("Registry Windows Install Date", null, new Func<string, string>(s => NetworkCommands.getWindowsInstallDate(s)),
                 null, null, null));
-            actionRunner.Add(new Actionable("Forward DNS Lookup", null, new Func<string, string>(s => NetworkCommands.forwardDnsLookup(s)),
+            actionRunner.Add(new Actionable("DNS Forward Lookup", null, new Func<string, string>(s => NetworkCommands.forwardDnsLookup(s)),
                 null, null, null));
-            actionRunner.Add(new Actionable("Reverse DNS Lookup", null, new Func<string, string>(s => NetworkCommands.reverseDnsLookup(s)),
+            actionRunner.Add(new Actionable("DNS Reverse Lookup", null, new Func<string, string>(s => NetworkCommands.reverseDnsLookup(s)),
                 null, null, null));
 
             var acts = actionRunner.ActionKeys;
+            
             //acts.Add(addActionKey);
             actionListComboBox.DataSource = acts;
             if (!actionRunner.IsRunning(actionListComboBox.SelectedValue.ToString()))
@@ -331,6 +334,13 @@ namespace CommandsAndStats
 
         private void startActionButton_Click(object sender, EventArgs e)
         {
+            if (actionListComboBox.SelectedValue.ToString().Contains("!"))
+            {
+                DialogResult res = MessageBox.Show(String.Format("Are you sure you want to run the {0} action?",actionListComboBox.SelectedValue.ToString()),
+                    "Start Action?", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
+                if (res == DialogResult.Cancel)
+                    return;
+            }
             startActionButton.Enabled = false;
             startActionButton.Refresh();
             if (!serverGridView.Columns.Contains(actionListComboBox.SelectedValue.ToString()))
