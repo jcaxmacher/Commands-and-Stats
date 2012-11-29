@@ -56,12 +56,15 @@ namespace CommandsAndStats
                 null, null, null, 10));
             actionRunner.Add(new Actionable("VM Power State", null, new Func<string, string>(s => NetworkCommands.getPowerStatus(VCenterClient, s)),
                 null, ActionRunner.dateStampResult(), null));
+            actionRunner.Add(new Actionable("Nmap OS Scan", null, new Func<string, string>(s => NetworkCommands.nmapOsScan(s)),
+                null, null, null, 10));
+            actionRunner.Add(new Actionable("Windows Install Date", null, new Func<string, string>(s => NetworkCommands.getWindowsInstallDate(s)),
+                null, null, null));
             actionRunner.Add(new Actionable("Forward DNS Lookup", null, new Func<string, string>(s => NetworkCommands.forwardDnsLookup(s)),
                 null, null, null));
             actionRunner.Add(new Actionable("Reverse DNS Lookup", null, new Func<string, string>(s => NetworkCommands.reverseDnsLookup(s)),
                 null, null, null));
-            actionRunner.Add(new Actionable("Nmap OS Scan", null, new Func<string, string>(s => NetworkCommands.nmapOsScan(s)),
-                null, null, null));
+
             var acts = actionRunner.ActionKeys;
             //acts.Add(addActionKey);
             actionListComboBox.DataSource = acts;

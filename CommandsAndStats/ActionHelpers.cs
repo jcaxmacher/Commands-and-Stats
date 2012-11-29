@@ -271,6 +271,21 @@ namespace CommandsAndStats
                 throw new Exception("Virtual machine not found.");
             return vm.Runtime.PowerState.ToString();
         }
+
+        public static string getWindowsInstallDate(string serverName)
+        {
+            Microsoft.Win32.RegistryKey key = Microsoft.Win32.RegistryKey.OpenRemoteBaseKey(Microsoft.Win32.RegistryHive.LocalMachine, serverName);
+            key = key.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion", false);
+            if (key == null)
+                throw new Exception("Could not connect or get registry key.");
+
+            DateTime startDate = new DateTime(1970, 1, 1, 0, 0, 0);
+            Int64 regVal = Convert.ToInt64(key.GetValue("InstallDate").ToString());
+
+            DateTime installDate = startDate.AddSeconds(regVal);
+
+            return installDate.ToShortDateString();
+        }
     }
 
     public enum ActionStatus { None, Queued, Pending, Success, Failure, Unknown }
