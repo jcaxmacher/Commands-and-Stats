@@ -478,9 +478,10 @@ namespace CommandsAndStats
 
         private void serverGridView_CellValidating(object sender, DataGridViewCellValidatingEventArgs e)
         {
-            if (actionRunner.AnyRunning() || gridModifier != 0)
+            if ((actionRunner.AnyRunning() || gridModifier != 0) && this.serverGridView.Focused)
             {
                 MessageBox.Show("You cannot change the data while an action is in progress.", "Action In Progress", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ((DataGridView)sender).ClearSelection();
                 e.Cancel = true;
             }
         }
