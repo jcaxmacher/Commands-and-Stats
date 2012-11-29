@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using System.Management;
 using System.Collections.Specialized;
 using System.Text.RegularExpressions;
+using System.Diagnostics;
 
 namespace CommandsAndStats
 {
@@ -69,6 +70,38 @@ namespace CommandsAndStats
             tcpClient.GetStream().Close();
             tcpClient.Close();
             return message;
+        }
+
+        public static string nmapOsScan(string serverName)
+        {
+            StringBuilder output;
+            ProcessStartInfo processStartInfo;
+            Process process;
+            
+            output = new StringBuilder();
+            processStartInfo = new ProcessStartInfo();
+            processStartInfo.CreateNoWindow = true;
+            processStartInfo.RedirectStandardOutput = true;
+            processStartInfo.RedirectStandardInput = true;
+            processStartInfo.UseShellExecute = false;
+            processStartInfo.Arguments = " -O --osscan-limit --osscan-guess --max-os-tries 1 " + serverName;
+            processStartInfo.FileName = "nmap.exe";
+
+            process = new Process();
+            process.StartInfo = processStartInfo;
+            // enable raising events because Process does not raise events by default
+            process.EnableRaisingEvents = true;
+            process.OutputDataReceived += (sender, args) => output.Append(args.Data + '\n');
+            process.Start();
+            process.BeginOutputReadLine();
+
+            process.WaitForExit();
+            process.CancelOutputRead();
+
+            // use the output
+            string result = output.ToString();
+            string guesses = result.Split('\n').Where(x => x.StartsWith("Aggressive OS guesses: ")).FirstOrDefault().Replace("Aggressive OS guesses: ", "");
+            return guesses;
         }
 
         public static string pingScan(string serverName)
@@ -195,6 +228,25 @@ namespace CommandsAndStats
             return "Power Off command sucessfully submitted.";
         }
 
+        public static string getVMOperatingSystem(VMware.Vim.VimClient client, string vmName)
+        {
+            if (client == null) throw new Exception("Not connected to VCenter.");
+            NameValueCollection filter = new NameValueCollection();
+            VMware.Vim.VirtualMachine vm;
+            filter.Add("Name", String.Format("^{0}$", Regex.Escape(vmName.ToLower().Replace(".ca.com", ""))));
+            vm = (VMware.Vim.VirtualMachine)client.FindEntityView(typeof(VMware.Vim.VirtualMachine), null, filter, null);
+            if (vm == null)
+            {
+                filter.Remove("Name");
+                filter.Add("Name", String.Format("^{0}$", Regex.Escape(vmName)));                
+                vm = (VMware.Vim.VirtualMachine)client.FindEntityView(typeof(VMware.Vim.VirtualMachine), null, filter, null);
+                if (vm == null)
+                    throw new Exception("Virtual machine not found.");
+            }
+            return vm.Guest.GuestFullName;
+        }
+
+                    
         public static string powerOnVM(VMware.Vim.VimClient client, string vmName)
         {
             if (client == null) throw new Exception("Not connected to VCenter.");
@@ -230,11 +282,13 @@ namespace CommandsAndStats
         private Func<string, string> _post;
         private Action _cancel;
         private Boolean _running;
+        private Boolean _repeat;
         private BackgroundWorker _worker;
         private string _name;
+        private int _maxrunning;
         public object runLock = new object();
 
-        public Actionable(string name, Action pre, Func<string, string> work, Func<Exception, string> handleWorkError, Func<string, string> post, Action cancel)
+        public Actionable(string name, Action pre, Func<string, string> work, Func<Exception, string> handleWorkError, Func<string, string> post, Action cancel, int maxrunning=-1)
         {
             _pre = pre;
             _work = work;
@@ -242,6 +296,11 @@ namespace CommandsAndStats
             _cancel = cancel;
             _running = false;
             _name = name;
+            _maxrunning = maxrunning;
+        }
+        public int MaxRunning
+        {
+            get { return _maxrunning; }
         }
         public Boolean Running
         {
@@ -265,6 +324,11 @@ namespace CommandsAndStats
         public Func<string, string> Post
         {
             get { return _post; }
+        }
+        public Boolean Repeat
+        {
+            get { return _repeat; }
+            set { _repeat = value; }
         }
     }
 
@@ -325,42 +389,69 @@ namespace CommandsAndStats
                 }
                 Task.WaitAll(gridTasks.ToArray());
 
-                var tasks = new List<Task>();
-                foreach (string serverName in serverMap.Keys)
-                {
-                    int x = serverMap[serverName];
-                    string name = serverName;
-                    tasks.Add(Task.Factory.StartNew(() =>
-                    {
-                        try
-                        {
-                            formHandle.setServerData(x, action.Name, "In progress...", getColorForActionStatus(ActionStatus.Pending));
-                            Task<ActionResult> t = Task.Factory.StartNew<ActionResult>(wrapFunc(action.WorkFunc, name), token);
-                            t.Wait(token);
-                            string result;
-                            if (action.Post != null)
-                            {
-                                result = action.Post.Invoke(t.Result.Message);
-                            }
-                            else
-                            {
-                                result = t.Result.Message;
-                            }
-                            formHandle.setServerData(x, action.Name, result, getColorForActionStatus(t.Result.Status));
-                        }
-                        catch (Exception e)
-                        {
-                            formHandle.setServerData(x, action.Name, "Operation cancelled.", getColorForActionStatus(ActionStatus.Unknown));
-                        }
-                    }, token));
-                }
-
                 try
                 {
-                    Task.WaitAll(tasks.ToArray(), token);
+
+                    int atOnce;
+                    if (action.MaxRunning == -1)
+                        atOnce = serverMap.Keys.Count;
+                    else
+                        atOnce = action.MaxRunning;
+
+                    int segments = serverMap.Keys.Count / atOnce;
+                    if (segments * atOnce < serverMap.Keys.Count) segments++;
+                    var keys = serverMap.Keys.ToArray();
+
+                    for (int i = 0; i < segments; i++)
+                    {
+                        var tasks = new List<Task>();
+                        for (int j = i * atOnce; j < (i * atOnce) + atOnce; j++)
+                        {
+                            if (j < serverMap.Keys.Count)
+                            {
+                                string serverName = keys[j];
+                                int x = serverMap[serverName];
+                                string name = serverName;
+                                tasks.Add(Task.Factory.StartNew(() =>
+                                {
+                                    try
+                                    {
+                                        formHandle.setServerData(x, action.Name, "In progress...", getColorForActionStatus(ActionStatus.Pending));
+                                        Task<ActionResult> t = Task.Factory.StartNew<ActionResult>(wrapFunc(action.WorkFunc, name), token);
+                                        t.Wait(token);
+                                        string result;
+                                        if (action.Post != null)
+                                        {
+                                            result = action.Post.Invoke(t.Result.Message);
+                                        }
+                                        else
+                                        {
+                                            result = t.Result.Message;
+                                        }
+                                        formHandle.setServerData(x, action.Name, result, getColorForActionStatus(t.Result.Status));
+                                    }
+                                    catch (Exception e)
+                                    {
+                                        formHandle.setServerData(x, action.Name, "Operation cancelled.", getColorForActionStatus(ActionStatus.Unknown));
+                                    }
+                                }, token));
+                            }
+                        }
+                        try
+                        {
+                            Task.WaitAll(tasks.ToArray(), token);
+                        }
+                        catch (OperationCanceledException opex)
+                        {
+                            throw opex;
+                        }
+
+                    }
+                
                     formHandle.addToActionLog("Completed: " + action.Name);
                     action.Running = false;
                     formHandle.refreshActionListControls();
+                    if (action.Repeat) this.Run(action.Name, formHandle.getEnabledServers());
                 }
                 catch (OperationCanceledException opex)
                 {
@@ -374,6 +465,8 @@ namespace CommandsAndStats
                     action.Running = false;
                     formHandle.refreshActionListControls();
                 }
+
+
                 lock (action.runLock)
                 {
                     action.Running = false;
@@ -426,6 +519,16 @@ namespace CommandsAndStats
         public Boolean IsRunning(string key)
         {
             return actions[key].Running;
+        }
+
+        public Boolean WillRepeat(string key)
+        {
+            return actions[key].Repeat;
+        }
+
+        public void SetRepeat(string key, Boolean bo)
+        {
+            actions[key].Repeat = bo;
         }
 
         public Boolean AnyRunning()

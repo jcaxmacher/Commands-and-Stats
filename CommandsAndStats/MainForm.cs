@@ -22,6 +22,7 @@ namespace CommandsAndStats
         private object gridLock = new object();
         private int gridModifier = 0;
         private string defaultVcenterServer = "";
+        private Dictionary<Tuple<string, string>, string> nodeStates = new Dictionary<Tuple<string, string>, string>();
 
         public VMware.Vim.VimClient VCenterClient { get; set; }
         public string VCenterServer { get; set; }
@@ -41,21 +42,25 @@ namespace CommandsAndStats
                 null, ActionRunner.dateStampResult(), null));
             actionRunner.Add(new Actionable("Ping Scan", null, new Func<string, string>(s => NetworkCommands.pingScan(s)),
                 null, ActionRunner.dateStampResult(), null));
-            actionRunner.Add(new Actionable("Reboot Server", null, new Func<string, string>(s => NetworkCommands.sendWMIShutdownReboot(s, "reboot")),
-                null, ActionRunner.dateStampResult(), null));
-            actionRunner.Add(new Actionable("Shutdown Server", null, new Func<string, string>(s => NetworkCommands.sendWMIShutdownReboot(s, "shutdown")),
-                null, ActionRunner.dateStampResult(), null));
-            actionRunner.Add(new Actionable("Last BootTime", null, new Func<string, string>(s => NetworkCommands.sendWMIShutdownReboot(s, "lastboottime")),
-                null, ActionRunner.dateStampResult(), null));
-            actionRunner.Add(new Actionable("Power Off VM", null, new Func<string, string>(s => NetworkCommands.powerOffVM(VCenterClient, s)),
-                null, ActionRunner.dateStampResult(), null));
-            actionRunner.Add(new Actionable("Power On VM", null, new Func<string, string>(s => NetworkCommands.powerOnVM(VCenterClient, s)),
-                null, ActionRunner.dateStampResult(), null));
+            //actionRunner.Add(new Actionable("Reboot Server", null, new Func<string, string>(s => NetworkCommands.sendWMIShutdownReboot(s, "reboot")),
+            //    null, ActionRunner.dateStampResult(), null));
+            //actionRunner.Add(new Actionable("Shutdown Server", null, new Func<string, string>(s => NetworkCommands.sendWMIShutdownReboot(s, "shutdown")),
+            //    null, ActionRunner.dateStampResult(), null));
+            //actionRunner.Add(new Actionable("Last BootTime", null, new Func<string, string>(s => NetworkCommands.sendWMIShutdownReboot(s, "lastboottime")),
+            //    null, ActionRunner.dateStampResult(), null));
+            //actionRunner.Add(new Actionable("Power Off VM", null, new Func<string, string>(s => NetworkCommands.powerOffVM(VCenterClient, s)),
+            //    null, ActionRunner.dateStampResult(), null));
+            //actionRunner.Add(new Actionable("Power On VM", null, new Func<string, string>(s => NetworkCommands.powerOnVM(VCenterClient, s)),
+            //    null, ActionRunner.dateStampResult(), null));
+            actionRunner.Add(new Actionable("Get VM Operating System", null, new Func<string, string>(s => NetworkCommands.getVMOperatingSystem(VCenterClient, s)),
+                null, null, null, 10));
             actionRunner.Add(new Actionable("VM Power State", null, new Func<string, string>(s => NetworkCommands.getPowerStatus(VCenterClient, s)),
                 null, ActionRunner.dateStampResult(), null));
             actionRunner.Add(new Actionable("Forward DNS Lookup", null, new Func<string, string>(s => NetworkCommands.forwardDnsLookup(s)),
                 null, null, null));
             actionRunner.Add(new Actionable("Reverse DNS Lookup", null, new Func<string, string>(s => NetworkCommands.reverseDnsLookup(s)),
+                null, null, null));
+            actionRunner.Add(new Actionable("Nmap OS Scan", null, new Func<string, string>(s => NetworkCommands.nmapOsScan(s)),
                 null, null, null));
             var acts = actionRunner.ActionKeys;
             //acts.Add(addActionKey);
@@ -249,10 +254,14 @@ namespace CommandsAndStats
                     foreach (string net in subnets)
                     {
                         IPNetwork netw = IPNetwork.Parse(net);
-                        IPAddressCollection ips = IPNetwork.ListIPAddress(netw);
-                        foreach (var addr in ips)
+                        if (netw.Usable > 0)
                         {
-                            addNodeToGrid(addr.ToString());
+                            IPAddressCollection ips = IPNetwork.ListIPAddress(netw);
+
+                            foreach (var addr in ips)
+                            {
+                                addNodeToGrid(addr.ToString());
+                            }
                         }
                     }
                 }));
@@ -341,6 +350,45 @@ namespace CommandsAndStats
             stopActionButton.Refresh();
             addToActionLog("Cancellation In Progress: " + actionListComboBox.SelectedValue.ToString());
             actionRunner.Stop(actionListComboBox.SelectedValue.ToString());
+        }
+
+        private void resetDataGridToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (!actionRunner.AnyRunning() && gridModifier == 0)
+            {
+                resetServerGrid();
+                nodeStateChangeTextBox.Clear();
+                actionLogTextBox.Clear();
+            }
+            else
+            {
+                MessageBox.Show("You cannot reset the node list while an action is in progress.", "Action In Progress", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private void clearToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ToolStripItem item = (sender as ToolStripItem);
+            if (item != null)
+            {
+                ContextMenuStrip owner = item.Owner as ContextMenuStrip;
+                if (owner != null)
+                {
+                    if (!(owner.SourceControl is DataGridView))
+                    {
+                        RichTextBox textBox = owner.SourceControl as RichTextBox;
+                        textBox.Clear();
+                    }
+                    else if (!actionRunner.AnyRunning() && gridModifier == 0 && owner.SourceControl is DataGridView)
+                    {
+                        resetServerGrid();
+                    }
+                    else if (owner.SourceControl is DataGridView)
+                    {
+                        MessageBox.Show("You cannot sort or change enabled rows while an action is in progress.", "Action In Progress", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            }
         }
         #endregion
 
@@ -447,6 +495,15 @@ namespace CommandsAndStats
             });
             condInvoke(a);
         }
+        public void addToNodeStateChangeLog(string message, bool addDateStamp=true)
+        {
+            var a = new Action(() =>
+            {
+                string logText = (addDateStamp) ? "[" + DateTime.Now + "] " + message: message;
+                nodeStateChangeTextBox.AppendText(logText + "\n");
+            });
+            condInvoke(a);
+        }
 
         public List<int> getPendingIndices(List<int> targeted, string columnName)
         {
@@ -466,7 +523,9 @@ namespace CommandsAndStats
         {
             var a = new Action(() =>
             {
-                if (!actionRunner.IsRunning(actionListComboBox.SelectedValue.ToString()))
+                string key = actionListComboBox.SelectedValue.ToString();
+                toggleRepeatButton.Checked = actionRunner.WillRepeat(key);
+                if (!actionRunner.IsRunning(key))
                 {
                     startActionButton.Enabled = true;
                     stopActionButton.Enabled = false;
@@ -526,7 +585,7 @@ namespace CommandsAndStats
             condInvoke(addPowerStateCol);
         }
 
-        private Dictionary<string, int> getEnabledServers()
+        public Dictionary<string, int> getEnabledServers()
         {
             var serverMap = new Dictionary<string, int>();
             for (int i = 0; i < serverGridView.Rows.Count; i++)
@@ -545,6 +604,33 @@ namespace CommandsAndStats
             {
                 serverGridView.Rows[index].Cells[column].Value = text;
                 serverGridView.Rows[index].Cells[column].Style.BackColor = backgroundColor;
+                string nodeName = serverGridView.Rows[index].Cells["Node"].Value.ToString();
+
+                string state = "";
+                if (!(nodeStates.TryGetValue(new Tuple<string, string>(nodeName, column), out state)))
+                {
+                    state = "None";
+                }
+
+                if (backgroundColor.Equals(ActionRunner.getColorForActionStatus(ActionStatus.Failure)) && state != "Red")
+                {
+                    nodeStates[new Tuple<string, string>(nodeName, column)] = "Red";
+                }
+                else if (backgroundColor.Equals(ActionRunner.getColorForActionStatus(ActionStatus.Success)) && state != "Green")
+                {
+                    nodeStates[new Tuple<string, string>(nodeName, column)] = "Green";
+                }
+
+                string newState = "";
+                if (!(nodeStates.TryGetValue(new Tuple<string, string>(nodeName, column), out newState)))
+                {
+                    newState = "None";
+                }
+
+                if (state != "None" && state != newState)
+                {
+                    addToNodeStateChangeLog(nodeName + " - " + column + " changed from " + state + " to " + newState);
+                }
             });
             condInvoke(a);
         }
@@ -580,13 +666,11 @@ namespace CommandsAndStats
         }
         #endregion
 
-        private void resetDataGridToolStripMenuItem_Click(object sender, EventArgs e)
+
+        private void toggleRepeatButton_CheckedChanged(object sender, EventArgs e)
         {
-            resetServerGrid();
+            CheckBox checkbox = sender as CheckBox;
+            actionRunner.SetRepeat(actionListComboBox.SelectedValue.ToString(), checkbox.Checked);
         }
-
-
-
-
     }
 }
