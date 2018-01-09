@@ -9,9 +9,8 @@ using System.Windows.Forms;
 using System.Threading;
 using System.Dynamic;
 using System.Runtime.InteropServices;
-using VMware;
 using System.Collections.Specialized;
-using LukeSkywalker.IPNetwork;
+using System.Net;
 
 namespace CommandsAndStats
 {
@@ -24,11 +23,9 @@ namespace CommandsAndStats
         private string defaultVcenterServer = "";
         private Dictionary<Tuple<string, string>, string> nodeStates = new Dictionary<Tuple<string, string>, string>();
 
-        public VMware.Vim.VimClient VCenterClient { get; set; }
         public string VCenterServer { get; set; }
         public string VCenterUserName { get; set; }
         public string VCenterUserPassword { get; set; }
-        public VMware.Vim.Datacenter ChosenDatacenter { get; set; }
 
         public MainForm()
         {
@@ -50,14 +47,6 @@ namespace CommandsAndStats
                 null, ActionRunner.dateStampResult(), null));
             actionRunner.Add(new Actionable("WMI Shutdown Server!", null, new Func<string, string>(s => NetworkCommands.runWMIQuery(s, "shutdown")),
                 null, ActionRunner.dateStampResult(), null));
-            actionRunner.Add(new Actionable("VM Power Off!", null, new Func<string, string>(s => NetworkCommands.powerOffVM(VCenterClient, s)),
-                null, ActionRunner.dateStampResult(), null, 10));
-            actionRunner.Add(new Actionable("VM Power On!", null, new Func<string, string>(s => NetworkCommands.powerOnVM(VCenterClient, s)),
-                null, ActionRunner.dateStampResult(), null, 10));
-            actionRunner.Add(new Actionable("VM Operating System", null, new Func<string, string>(s => NetworkCommands.getVMOperatingSystem(VCenterClient, s)),
-                null, null, null, 10));
-            actionRunner.Add(new Actionable("VM Power State", null, new Func<string, string>(s => NetworkCommands.getPowerStatus(VCenterClient, s)),
-                null, ActionRunner.dateStampResult(), null, 10));
             actionRunner.Add(new Actionable("Nmap OS Scan", null, new Func<string, string>(s => NetworkCommands.nmapOsScan(s)),
                 null, null, null, 10));
             actionRunner.Add(new Actionable("Registry Windows Install Date", null, new Func<string, string>(s => NetworkCommands.getWindowsInstallDate(s)),
@@ -277,54 +266,9 @@ namespace CommandsAndStats
 
         private void importListFromVCenterToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            var vcenterConnectForm = new VCenterConnectForm(defaultVcenterServer);
-            var result = vcenterConnectForm.ShowDialog(this);
-            if (result == DialogResult.Yes)
-            {
-                VCenterClient = vcenterConnectForm.VCenterClient;
-                VCenterServer = vcenterConnectForm.VCenterServer;
-                VCenterUserName = vcenterConnectForm.VCenterUserName;
-                VCenterUserPassword = vcenterConnectForm.VCenterUserPassword;
-                var moRef = new VMware.Vim.ManagedObjectReference();
-                moRef.Type = "Datacenter";
-                moRef.Value = vcenterConnectForm.DCMoRef;
-                NameValueCollection filter = null;
-                if (vcenterConnectForm.PowerState.ToLower() != "any")
-                {
-                    filter = new NameValueCollection();
-                    filter.Add("Runtime.PowerState", vcenterConnectForm.PowerState);
-                }
-                var worker = new BackgroundWorker();
-                worker.DoWork += new DoWorkEventHandler(new Action<object, DoWorkEventArgs>((o, args) =>
-                {
-                    addToActionLog("Started: Loading server list from VCenter");
-                    IList<VMware.Vim.EntityViewBase> vmList =
-                        VCenterClient.FindEntityViews(typeof(VMware.Vim.VirtualMachine), moRef, filter, null);
-                    lock (gridLock)
-                    {
-                        gridModifier++;
-                    }
-                    foreach (VMware.Vim.VirtualMachine vm in vmList)
-                    {
-                        addVMNodeToGrid(vm.Name, ActionRunner.dateStampResult().Invoke(vm.Runtime.PowerState.ToString()));
-                    }
-                    lock (gridLock)
-                    {
-                        gridModifier--;
-                    }
+
                     addToActionLog("Complete: Loading server list from VCenter");
-                }));
-                worker.RunWorkerAsync();
-            }
-            else if (result == DialogResult.OK && vcenterConnectForm.Connected)
-            {
-                VCenterClient = vcenterConnectForm.VCenterClient;
-                VCenterServer = vcenterConnectForm.VCenterServer;
-                VCenterUserName = vcenterConnectForm.VCenterUserName;
-                VCenterUserPassword = vcenterConnectForm.VCenterUserPassword;
-                addToActionLog("Completed: Connected to VCenter.  VM actions should now work.");
-            }
-            vcenterConnectForm.Close();
+
         }
 
         private void exitToolStripMenuItem_Click(object sender, EventArgs e)

@@ -218,64 +218,7 @@ namespace CommandsAndStats
             //return datetime
             return parsed;
         }
-
-        public static string powerOffVM(VMware.Vim.VimClient client, string vmName)
-        {
-            if (client == null) throw new Exception("Not connected to VCenter.");
-            NameValueCollection filter = new NameValueCollection();
-            filter.Add("Name", String.Format("^{0}$", Regex.Escape(vmName)));
-            VMware.Vim.VirtualMachine vm =
-                (VMware.Vim.VirtualMachine)client.FindEntityView(typeof(VMware.Vim.VirtualMachine), null, filter, null);
-            if (vm == null)
-                throw new Exception("Virtual machine not found.");
-            vm.PowerOffVM();
-            return "Power Off command sucessfully submitted.";
-        }
-
-        public static string getVMOperatingSystem(VMware.Vim.VimClient client, string vmName)
-        {
-            if (client == null) throw new Exception("Not connected to VCenter.");
-            NameValueCollection filter = new NameValueCollection();
-            VMware.Vim.VirtualMachine vm;
-            filter.Add("Name", String.Format("^{0}$", Regex.Escape(vmName.ToLower().Replace(".ca.com", ""))));
-            vm = (VMware.Vim.VirtualMachine)client.FindEntityView(typeof(VMware.Vim.VirtualMachine), null, filter, null);
-            if (vm == null)
-            {
-                filter.Remove("Name");
-                filter.Add("Name", String.Format("^{0}$", Regex.Escape(vmName)));                
-                vm = (VMware.Vim.VirtualMachine)client.FindEntityView(typeof(VMware.Vim.VirtualMachine), null, filter, null);
-                if (vm == null)
-                    throw new Exception("Virtual machine not found.");
-            }
-            return vm.Guest.GuestFullName;
-        }
-
-                    
-        public static string powerOnVM(VMware.Vim.VimClient client, string vmName)
-        {
-            if (client == null) throw new Exception("Not connected to VCenter.");
-            NameValueCollection filter = new NameValueCollection();
-            filter.Add("Name", String.Format("^{0}$", Regex.Escape(vmName)));
-            VMware.Vim.VirtualMachine vm =
-                (VMware.Vim.VirtualMachine)client.FindEntityView(typeof(VMware.Vim.VirtualMachine), null, filter, null);
-            if (vm == null)
-                throw new Exception("Virtual machine not found.");
-            vm.PowerOnVM(null);
-            return "Power On command sucessfully submitted.";
-        }
-
-        public static string getPowerStatus(VMware.Vim.VimClient client, string vmName)
-        {
-            if (client == null) throw new Exception("Not connected to VCenter.");
-            NameValueCollection filter = new NameValueCollection();
-            filter.Add("Name", String.Format("^{0}$", Regex.Escape(vmName)));
-            VMware.Vim.VirtualMachine vm =
-                (VMware.Vim.VirtualMachine)client.FindEntityView(typeof(VMware.Vim.VirtualMachine), null, filter, null);
-            if (vm == null)
-                throw new Exception("Virtual machine not found.");
-            return vm.Runtime.PowerState.ToString();
-        }
-
+        
         public static string getWindowsInstallDate(string serverName)
         {
             Microsoft.Win32.RegistryKey key = Microsoft.Win32.RegistryKey.OpenRemoteBaseKey(Microsoft.Win32.RegistryHive.LocalMachine, serverName);
